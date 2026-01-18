@@ -18,6 +18,22 @@ from scipy.spatial import Delaunay  # type: ignore[import-untyped]
 from scipy.spatial.transform import Rotation as R  # type: ignore[import-untyped]  # noqa: N817
 
 
+# def load_intermimic_data(file_path):
+#     """
+#     Load and preprocess InterMimic data.
+
+#     Args:
+#         file_path (str): Path to the .pt file.
+
+#     Returns:
+#         tuple: (human_joints, object_poses) - processed data.
+#     """
+#     intermimic_data = torch.load(file_path, map_location="cpu").detach().numpy()
+#     human_joints = intermimic_data[:, 162 : 162 + 52 * 3].reshape(-1, 52, 3)
+#     # Reorder quaternion from [qx, qy, qz, qw] to [qw, qx, qy, qz]
+#     object_poses = intermimic_data[:, 318:325][:, [6, 3, 4, 5, 0, 1, 2]]
+#     return human_joints, object_poses
+
 def load_intermimic_data(file_path):
     """
     Load and preprocess InterMimic data.
@@ -28,19 +44,51 @@ def load_intermimic_data(file_path):
     Returns:
         tuple: (human_joints, object_poses) - processed data.
     """
-    intermimic_data = torch.load(file_path, map_location="cpu").detach().numpy()
-    human_joints = intermimic_data[:, 162 : 162 + 52 * 3].reshape(-1, 52, 3)
-    # Reorder quaternion from [qx, qy, qz, qw] to [qw, qx, qy, qz]
-    object_poses = intermimic_data[:, 318:325][:, [6, 3, 4, 5, 0, 1, 2]]
-    return human_joints, object_poses
+    try:
+        intermimic_data = torch.load(file_path, map_location="cpu")
+    except pickle.UnpicklingError:
+        # Trusted local data; allow loading full pickled objects on PyTorch >= 2.6.
+        intermimic_data = torch.load(file_path, map_location="cpu", weights_only=False)
 
+    if isinstance(intermimic_data, dict) and {
+        "human_joints",
+        "object_poses",
+    }.issubset(intermimic_data.keys()):
+        print("intermimic_data: ",intermimic_data.keys())
+        human_joints = intermimic_data["human_joints"]
+        object_poses = intermimic_data["object_poses"]
+
+        if isinstance(human_joints, torch.Tensor):
+            human_joints = human_joints.detach().cpu().numpy()
+        else:
+            human_joints = np.asarray(human_joints)
+
+        if isinstance(object_poses, torch.Tensor):
+            object_poses = object_poses.detach().cpu().numpy()
+        else:
+            object_poses = np.asarray(object_poses)
+
+        return human_joints, object_poses
+
+    if isinstance(intermimic_data, torch.Tensor):
+        intermimic_data = intermimic_data.detach().cpu().numpy()
+    else:
+        intermimic_data = np.asarray(intermimic_data)
+
+    human_joints = intermimic_data[:, :15 * 3].reshape(-1, 15, 3)
+    # Reorder quaternion from [qx, qy, qz, qw] to [qw, qx, qy, qz]
+    object_poses = intermimic_data[:, 15:22][:, [6, 3, 4, 5, 0, 1, 2]]
+    return human_joints, object_poses
 
 def calculate_scale_factor(task_name, robot_height):
     """Calculate scale factor based on human height."""
     with open("demo_data/height_dict.pkl", "rb") as f:
         height_dict = pickle.load(f)
-    sub_name = task_name.split("_")[0]
+    # sub_name = task_name.split("_")[0]
+    sub_name = "sub3"
     human_height = height_dict[sub_name]
+    human_height = 1.5722
+    print("human_height: ",human_height)
     return robot_height / human_height
 
 

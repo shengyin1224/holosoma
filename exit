@@ -1,0 +1,187 @@
+[1mdiff --git a/src/holosoma_retargeting/examples/robot_retarget.py b/src/holosoma_retargeting/examples/robot_retarget.py[m
+[1mindex f8dc400..04b4858 100644[m
+[1m--- a/src/holosoma_retargeting/examples/robot_retarget.py[m
+[1m+++ b/src/holosoma_retargeting/examples/robot_retarget.py[m
+[36m@@ -373,6 +373,65 @@[m [mdef setup_object_data([m
+     raise ValueError(f"Unknown task type: {task_type}")[m
+ [m
+ [m
+[32m+[m[32m# def _compute_q_init_base([m
+[32m+[m[32m#     task_type: TaskType,[m
+[32m+[m[32m#     data_format: str,[m
+[32m+[m[32m#     human_joints: np.ndarray,[m
+[32m+[m[32m#     object_poses: np.ndarray,[m
+[32m+[m[32m#     constants: SimpleNamespace,[m
+[32m+[m[32m#     retargeter: InteractionMeshRetargeter | None = None,[m
+[32m+[m[32m# ) -> np.ndarray:[m
+[32m+[m[32m#     """Compute base robot pose initialization (q_init_base).[m
+[32m+[m[32m#     This is a shared helper function used by both single and parallel processing.[m
+[32m+[m[32m#     Args:[m
+[32m+[m[32m#         task_type: Type of task[m
+[32m+[m[32m#         data_format: Data format[m
+[32m+[m[32m#         human_joints: Human joint positions[m
+[32m+[m[32m#         object_poses: Object poses in format [qw, qx, qy, qz, x, y, z][m
+[32m+[m[32m#         constants: Task constants[m
+[32m+[m[32m#         retargeter: Optional retargeter instance (needed for climbing)[m
+[32m+[m[32m#     Returns:[m
+[32m+[m[32m#         q_init_base in MuJoCo order: [0:3] position, [3:7] quaternion, [7:] joints[m
+[32m+[m[32m#     """[m
+[32m+[m[32m#     if task_type == "robot_only":[m
+[32m+[m[32m#         if data_format == "lafan":[m
+[32m+[m[32m#             spine_joint_idx = constants.DEMO_JOINTS.index("Spine1")[m
+[32m+[m[32m#             human_quat_init = estimate_human_orientation(human_joints, constants.DEMO_JOINTS)[m
+[32m+[m[32m#             # MuJoCo order: pos first, then quat[m
+[32m+[m[32m#             q_init_base = np.concatenate([m
+[32m+[m[32m#                 [human_joints[0, spine_joint_idx, :3], human_quat_init, np.zeros(constants.ROBOT_DOF)][m
+[32m+[m[32m#             )[m
+[32m+[m[32m#         else:  # smplh[m
+[32m+[m[32m#             _, human_quat_init = transform_from_human_to_world([m
+[32m+[m[32m#                 human_joints[0, 0, :], object_poses[0], np.array([0.0, 0.0, 0.0])[m
+[32m+[m[32m#             )[m
+[32m+[m[32m#             # MuJoCo order: pos first, then quat[m
+[32m+[m[32m#             q_init_base = np.concatenate([human_joints[0, 0, :3], human_quat_init, np.zeros(constants.ROBOT_DOF)])[m
+[32m+[m[32m#     elif task_type == "object_interaction":[m
+[32m+[m[32m#         _, human_quat_init = transform_from_human_to_world([m
+[32m+[m[32m#             human_joints[0, 0, :], object_poses[0], np.array([0.0, 0.0, 0.0])[m
+[32m+[m[32m#         )[m
+[32m+[m[32m#         # MuJoCo order: pos first, then quat[m
+[32m+[m[32m#         q_init_base = np.concatenate([human_joints[0, 0, :3], human_quat_init, np.zeros(constants.ROBOT_DOF)])[m
+[32m+[m[32m#     elif task_type == "climbing":[m
+[32m+[m[32m#         if retargeter is None:[m
+[32m+[m[32m#             raise ValueError("retargeter is required for climbing task")[m
+[32m+[m[32m#         _, human_quat_init = transform_from_human_to_world([m
+[32m+[m[32m#             human_joints[0, 0, :], object_poses[0], np.array([0.0, 0.0, 0.0])[m
+[32m+[m[32m#         )[m
+[32m+[m[32m#         spine_joint_idx = retargeter.demo_joints.index("Spine1")[m
+[32m+[m[32m#         # MuJoCo order: pos first, then quat[m
+[32m+[m[32m#         q_init_base = np.concatenate([m
+[32m+[m[32m#             [[m
+[32m+[m[32m#                 human_joints[0, spine_joint_idx],[m
+[32m+[m[32m#                 human_quat_init,[m
+[32m+[m[32m#                 np.zeros(constants.ROBOT_DOF),[m
+[32m+[m[32m#             ][m
+[32m+[m[32m#         )[m
+[32m+[m[32m#     else:[m
+[32m+[m[32m#         raise ValueError(f"Invalid task type: {task_type}")[m
+[32m+[m
+[32m+[m[32m#     return q_init_base[m
+ def _compute_q_init_base([m
+     task_type: TaskType,[m
+     data_format: str,[m
+[36m@@ -381,59 +440,42 @@[m [mdef _compute_q_init_base([m
+     constants: SimpleNamespace,[m
+     retargeter: InteractionMeshRetargeter | None = None,[m
+ ) -> np.ndarray:[m
+[31m-    """Compute base robot pose initialization (q_init_base).[m
+[31m-    This is a shared helper function used by both single and parallel processing.[m
+[31m-    Args:[m
+[31m-        task_type: Type of task[m
+[31m-        data_format: Data format[m
+[31m-        human_joints: Human joint positions[m
+[31m-        object_poses: Object poses in format [qw, qx, qy, qz, x, y, z][m
+[31m-        constants: Task constants[m
+[31m-        retargeter: Optional retargeter instance (needed for climbing)[m
+[31m-    Returns:[m
+[31m-        q_init_base in MuJoCo order: [0:3] position, [3:7] quaternion, [7:] joints[m
+[31m-    """[m
+     if task_type == "robot_only":[m
+         if data_format == "lafan":[m
+             spine_joint_idx = constants.DEMO_JOINTS.index("Spine1")[m
+             human_quat_init = estimate_human_orientation(human_joints, constants.DEMO_JOINTS)[m
+[31m-            # MuJoCo order: pos first, then quat[m
+[31m-            q_init_base = np.concatenate([m
+[31m-                [human_joints[0, spine_joint_idx, :3], human_quat_init, np.zeros(constants.ROBOT_DOF)][m
+[31m-            )[m
+[32m+[m[32m            # 确保所有值都是标量[m
+[32m+[m[32m            position = human_joints[0, spine_joint_idx, :3].flatten()[m
+[32m+[m[32m            quaternion = human_quat_init.flatten()[m
+[32m+[m[32m            joints = np.zeros(constants.ROBOT_DOF)[m
+[32m+[m[32m            q_init_base = np.concatenate([position, quaternion, joints])[m
+         else:  # smplh[m
+[31m-            _, human_quat_init = transform_from_human_to_world([m
+[31m-                human_joints[0, 0, :], object_poses[0], np.array([0.0, 0.0, 0.0])[m
+[31m-            )[m
+[31m-            # MuJoCo order: pos first, then quat[m
+[31m-            q_init_base = np.concatenate([human_joints[0, 0, :3], human_quat_init, np.zeros(constants.ROBOT_DOF)])[m
+[32m+[m[32m            _, human_quat_init = transform_from_human_to_world(...)[m
+[32m+[m[32m            # 确保所有值都是标量[m
+[32m+[m[32m            position = human_joints[0, 0, :3].flatten()[m
+[32m+[m[32m            quaternion = human_quat_init.flatten()[m
+[32m+[m[32m            joints = np.zeros(constants.ROBOT_DOF)[m
+[32m+[m[32m            q_init_base = np.concatenate([position, quaternion, joints])[m
+     elif task_type == "object_interaction":[m
+[31m-        _, human_quat_init = transform_from_human_to_world([m
+[31m-            human_joints[0, 0, :], object_poses[0], np.array([0.0, 0.0, 0.0])[m
+[31m-        )[m
+[31m-        # MuJoCo order: pos first, then quat[m
+[31m-        q_init_base = np.concatenate([human_joints[0, 0, :3], human_quat_init, np.zeros(constants.ROBOT_DOF)])[m
+[32m+[m[32m        _, human_quat_init = transform_from_human_to_world(...)[m
+[32m+[m[32m        position = human_joints[0, 0, :3].flatten()[m
+[32m+[m[32m        quaternion = human_quat_init.flatten()[m
+[32m+[m[32m        joints = np.zeros(constants.ROBOT_DOF)[m
+[32m+[m[32m        q_init_base = np.concatenate([position, quaternion, joints])[m
+     elif task_type == "climbing":[m
+         if retargeter is None:[m
+             raise ValueError("retargeter is required for climbing task")[m
+[31m-        _, human_quat_init = transform_from_human_to_world([m
+[31m-            human_joints[0, 0, :], object_poses[0], np.array([0.0, 0.0, 0.0])[m
+[31m-        )[m
+[32m+[m[32m        _, human_quat_init = transform_from_human_to_world(...)[m
+         spine_joint_idx = retargeter.demo_joints.index("Spine1")[m
+[31m-        # MuJoCo order: pos first, then quat[m
+[31m-        q_init_base = np.concatenate([m
+[31m-            [[m
+[31m-                human_joints[0, spine_joint_idx],[m
+[31m-                human_quat_init,[m
+[31m-                np.zeros(constants.ROBOT_DOF),[m
+[31m-            ][m
+[31m-        )[m
+[31m-    else:[m
+[31m-        raise ValueError(f"Invalid task type: {task_type}")[m
+[31m-[m
+[32m+[m[32m        position = human_joints[0, spine_joint_idx].flatten()[m
+[32m+[m[32m        quaternion = human_quat_init.flatten()[m
+[32m+[m[32m        joints = np.zeros(constants.ROBOT_DOF)[m
+[32m+[m[32m        q_init_base = np.concatenate([position, quaternion, joints])[m
+[32m+[m[41m    [m
+[32m+[m[32m    # 在函数返回前添加最终检查[m
+[32m+[m[32m    q_init_base = np.asarray(q_init_base, dtype=np.float64).flatten()[m
+     return q_init_base[m
+ [m
+[31m-[m
+ def convert_object_poses_to_mujoco_order(object_poses: np.ndarray) -> np.ndarray:[m
+     """Convert object poses from [qw, qx, qy, qz, x, y, z] to MuJoCo order [x, y, z, qw, qx, qy, qz].[m
+     Args:[m
+[36m@@ -461,6 +503,10 @@[m [mdef build_retargeter_kwargs_from_config([m
+     Returns:[m
+         Dictionary of kwargs for InteractionMeshRetargeter[m
+     """[m
+[32m+[m[32m    # 确保 q_a_init_idx 是标量或正确格式[m
+[32m+[m[32m    q_a_init_idx = retargeter_config.q_a_init_idx[m
+[32m+[m[32m    if q_a_init_idx is not None and isinstance(q_a_init_idx, np.ndarray):[m
+[32m+[m[32m        q_a_init_idx = q_a_init_idx.flatten().tolist()[m
+     kwargs = {[m
+         "task_constants": constants,[m
+         "object_urdf_path": object_urdf_path,[m
+[36m@@ -658,6 +704,21 @@[m [mdef main(cfg: RetargetingConfig) -> None:[m
+ [m
+     # Create retargeter[m
+     retargeter_kwargs = build_retargeter_kwargs_from_config(cfg.retargeter, constants, object_urdf_path, task_type)[m
+[32m+[m[32m    # 在 retargeter = InteractionMeshRetargeter(**retargeter_kwargs) 之前[m
+[32m+[m[32m    logger.info("Creating retargeter with kwargs:")[m
+[32m+[m[32m    for key, value in retargeter_kwargs.items():[m
+[32m+[m[32m        logger.info(f"  {key}: {type(value)} = {value}")[m
+[32m+[m
+[32m+[m[32m    # 尝试直接加载 URDF 看看是否有问题[m
+[32m+[m[32m    import yourdfpy[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        test_urdf = yourdfpy.URDF.load(constants.ROBOT_URDF_FILE)[m
+[32m+[m[32m        logger.info("URDF loaded successfully in test")[m
+[32m+[m[32m    except Exception as e:[m
+[32m+[m[32m        logger.error(f"Failed to load URDF: {e}")[m
+[32m+[m[32m        logger.error(f"URDF path: {constants.ROBOT_URDF_FILE}")[m
+[32m+[m[32m        raise[m
+[32m+[m
+     retargeter = InteractionMeshRetargeter(**retargeter_kwargs)[m
+     logger.info("Retargeter created")[m
+ [m

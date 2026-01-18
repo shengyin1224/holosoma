@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="side_table">
+  <material name="color">
+    <color rgba="1.0 0.42 0.04 1.0"/>
+  </material>
+
+  <link name="side_table_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="side_table_visual.obj" scale="1 1 1"/>
+      </geometry>
+      <material name="color"/>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="side_table_visual.obj" scale="1 1 1"/>
+      </geometry>
+    </collision>
+
+    
+  </link>
+</robot>

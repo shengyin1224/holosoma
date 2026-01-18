@@ -573,12 +573,12 @@ class InteractionMeshRetargeter:
                     ]
 
         # Non-penetration constraints
-        Js, phis = self._update_jacobians_and_phis_from_q(q)
-        for key, phi in phis.items():
-            Ja_n_full = Js[key]
-            Ja_n = Ja_n_full[self.q_a_indices]
-            rhs = -phi - self.penetration_tolerance
-            constraints += [Ja_n @ dqa >= rhs]
+        # Js, phis = self._update_jacobians_and_phis_from_q(q)
+        # for key, phi in phis.items():
+        #     Ja_n_full = Js[key]
+        #     Ja_n = Ja_n_full[self.q_a_indices]
+        #     rhs = -phi - self.penetration_tolerance
+        #     constraints += [Ja_n @ dqa >= rhs]
 
         # Joint limits constraints (actuated)
         if self.activate_joint_limits:
@@ -1024,7 +1024,7 @@ class InteractionMeshRetargeter:
 
         Fast analytic version: J_qdot = J_v @ T(q)
         """
-
+        body_idx = int(np.asarray(body_idx).reshape(-1)[0])
         p_body = np.asarray(p_body, dtype=float).reshape(3)
 
         # 1) Make sure kinematics are current once

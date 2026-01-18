@@ -166,7 +166,23 @@ SMPLX_DEMO_JOINTS = [
     "L_Wrist",
     "R_Wrist",
 ]
-
+MXM_DEMO_JOINTS = [
+    "pelvis",
+    "left_hip",
+    "right_hip",
+    "left_knee",
+    "right_knee",
+    "left_shoulder",
+    "right_shoulder",
+    "left_elbow",
+    "right_elbow",
+    "left_ankle",
+    "right_ankle",
+    "left_foot",
+    "right_foot",
+    "left_wrist",
+    "right_wrist",
+]
 # Joint mappings - organized by (data_format, robot_type)
 JOINTS_MAPPINGS = {
     ("lafan", "g1"): {
@@ -288,6 +304,23 @@ JOINTS_MAPPINGS = {
         "LeftFoot": "Ankle_Cross_Left",
         "RightFoot": "Ankle_Cross_Right",
     },
+    ("humoto", "g1"): {
+        "pelvis": "pelvis_contour_link",
+        "left_hip": "left_hip_pitch_link",
+        "left_knee": "left_knee_link",
+        "left_foot": "left_ankle_roll_sphere_5_link",
+        "right_hip": "right_hip_pitch_link",
+        "right_knee": "right_knee_link",
+        "right_foot": "right_ankle_roll_sphere_5_link",
+        "left_shoulder": "left_shoulder_roll_link",
+        "left_elbow": "left_elbow_link",
+        "left_wrist": "left_rubber_hand_link",
+        "right_shoulder": "right_shoulder_roll_link",
+        "right_elbow": "right_elbow_link",
+        "right_wrist": "right_rubber_hand_link",
+        "left_ankle": "left_ankle_intermediate_1_link",
+        "right_ankle": "right_ankle_intermediate_1_link",
+    },
 }
 
 # Data format specific constants
@@ -296,6 +329,7 @@ TOE_NAMES_BY_FORMAT = {
     "smplh": ["L_Toe", "R_Toe"],
     "mocap": ["LeftToeBase", "RightToeBase"],
     "smplx": ["L_Foot", "R_Foot"],
+    "humoto": ["left_foot","right_foot"],
 }
 
 
@@ -322,6 +356,7 @@ DEMO_JOINTS_REGISTRY: dict[str, list[str]] = {
     "smplh": SMPLH_DEMO_JOINTS,
     "mocap": MOCAP_DEMO_JOINTS,
     "smplx": SMPLX_DEMO_JOINTS,
+    "humoto": MXM_DEMO_JOINTS,
 }
 
 # Type alias for data formats - use str to allow dynamic data formats via DEMO_JOINTS_REGISTRY
@@ -343,7 +378,8 @@ def _validate_data_format(data_format: str) -> None:
 @dataclass(frozen=True)
 class MotionDataConfig:
     # Use str instead of Literal to allow dynamic data formats via DEMO_JOINTS_REGISTRY
-    data_format: str = "smplh"
+    # data_format: str = "smplh"
+    data_format: str = "humoto"
     # Use str instead of Literal to allow dynamic robot types
     robot_type: str = "g1"
 

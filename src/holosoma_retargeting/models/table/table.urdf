@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="table">
+  <material name="color">
+    <color rgba="0.8 0.6 0.4 1.0"/>
+  </material>
+
+  <link name="table_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="table.obj" scale="1 1 1"/>
+      </geometry>
+      <material name="color"/>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="table.obj" scale="1 1 1"/>
+      </geometry>
+    </collision>
+    <!-- 无 inertial → PhysX 自动当作 static triangle mesh -->
+  </link>
+</robot>

@@ -62,7 +62,7 @@ def create_task_constants(
     if object_name is not None:
         namespace.OBJECT_NAME = object_name
 
-    if namespace.OBJECT_NAME != "ground":
+    if namespace.OBJECT_NAME != "low_chair":
         namespace.OBJECT_URDF_FILE = f"models/{namespace.OBJECT_NAME}/{namespace.OBJECT_NAME}.urdf"
         namespace.OBJECT_MESH_FILE = f"models/{namespace.OBJECT_NAME}/{namespace.OBJECT_NAME}.obj"
         namespace.OBJECT_URDF_TEMPLATE = f"models/templates/{namespace.OBJECT_NAME}.urdf.jinja"
@@ -71,9 +71,9 @@ def create_task_constants(
             f"{robot_config.robot_type}_{namespace.ROBOT_DOF}dof_w_{namespace.OBJECT_NAME}.xml"
         )
     else:
-        namespace.OBJECT_URDF_FILE = namespace.ROBOT_URDF_FILE
-        namespace.OBJECT_MESH_FILE = ""
-        namespace.SCENE_XML_FILE = namespace.ROBOT_URDF_FILE.replace(".urdf", ".xml")
+        namespace.OBJECT_URDF_FILE = "/home/ubuntu/DATA1/shengyin/humanoid/holosoma/src/holosoma_retargeting/models/low_chair/low_chair.urdf"
+        namespace.OBJECT_MESH_FILE = "/home/ubuntu/DATA1/shengyin/humanoid/holosoma/src/holosoma_retargeting/models/low_chair/low_chair.obj"
+        # namespace.SCENE_XML_FILE = namespace.ROBOT_URDF_FILE.replace(".urdf", ".xml")
 
     return namespace
 
@@ -97,6 +97,41 @@ def quat_mul(a, b):  # Hamilton product, (...,4)
         dim=-1,
     )
 
+def reorder_body_data(log, robot, target_body_order):
+    """
+    Reorder body-related data according to target body order.
+    
+    Args:
+        log: Dictionary containing logged data
+        robot: MuJoCo model
+        target_body_order: List of body names in desired order
+    
+    Returns:
+        Updated log dictionary with reordered body data
+    """
+    # Get current body names from MuJoCo
+    current_body_names = [mujoco.mj_id2name(robot, mujoco.mjtObj.mjOBJ_BODY, i) 
+                          for i in range(robot.nbody)]
+    
+    # Create mapping from target order to current indices
+    reorder_indices = []
+    for target_name in target_body_order:
+        if target_name in current_body_names:
+            reorder_indices.append(current_body_names.index(target_name))
+        else:
+            print(f"Warning: Body '{target_name}' not found in MuJoCo model")
+    
+    # Reorder body-related arrays
+    body_keys = ['body_pos_w', 'body_quat_w', 'body_lin_vel_w', 'body_ang_vel_w']
+    for key in body_keys:
+        if key in log:
+            # log[key] shape: (T, nbody, 3) or (T, nbody, 4)
+            log[key] = log[key][:, reorder_indices, :]
+    
+    # Update body_names to match target order
+    log['body_names'] = [current_body_names[i] for i in reorder_indices]
+    
+    return log
 
 def quat_to_rotvec(q, eps=1e-8):  # axis-angle vector (rotvec), (...,3)
     q = F.normalize(q, dim=-1)
@@ -119,10 +154,12 @@ class MotionLoader:
         line_range: tuple[int, int] | None,
         has_dynamic_object: bool,
         use_omniretarget_data: bool,
+        override_input_fps: bool = False,
     ):
         self.motion_file = motion_file
         self.input_fps = input_fps
         self.output_fps = output_fps
+        self.override_input_fps = override_input_fps
         self.input_dt = 1.0 / self.input_fps
         self.output_dt = 1.0 / self.output_fps
         self.current_idx = 0
@@ -138,7 +175,16 @@ class MotionLoader:
         """Loads the motion from the csv file."""
         if self.motion_file.endswith(".npz"):
             data = np.load(self.motion_file)
-            self.input_fps = round(1 / data.get("fps", 1 / self.input_fps))
+            # Smart FPS detection - only if not overridden by CLI
+            if "fps" in data and not self.override_input_fps:
+                f = float(data["fps"])
+                # If f < 1, it's likely dt (e.g. 0.02); if f >= 1, it's likely frequency (e.g. 50)
+                self.input_fps = round(f if f >= 1 else 1.0 / f)
+            else:
+                # Use provided input_fps
+                self.input_fps = max(1, int(self.input_fps))
+            
+            self.input_dt = 1.0 / self.input_fps
             motion = torch.from_numpy(data["qpos"]).to(torch.float32)
         else:
             raise ValueError("Unsupported motion file format. Use .csv or .npz.")
@@ -342,12 +388,62 @@ def world_body_velocities(model, data):
     return lin_w, ang_w
 
 
+def reorder_body_data(log, robot, target_body_order):
+    """
+    Reorder body-related data according to target body order.
+    
+    Args:
+        log: Dictionary containing logged data
+        robot: MuJoCo model
+        target_body_order: List of body names in desired order
+    
+    Returns:
+        Updated log dictionary with reordered body data
+    """
+    # Get current body names from MuJoCo
+    current_body_names = [mujoco.mj_id2name(robot, mujoco.mjtObj.mjOBJ_BODY, i) 
+                          for i in range(robot.nbody)]
+    
+    # Create mapping from target order to current indices
+    reorder_indices = []
+    for target_name in target_body_order:
+        if target_name in current_body_names:
+            reorder_indices.append(current_body_names.index(target_name))
+        else:
+            print(f"Warning: Body '{target_name}' not found in MuJoCo model")
+    
+    # Reorder body-related arrays
+    body_keys = ['body_pos_w', 'body_quat_w', 'body_lin_vel_w', 'body_ang_vel_w']
+    for key in body_keys:
+        if key in log:
+            # log[key] shape: (T, nbody, 3) or (T, nbody, 4)
+            log[key] = log[key][:, reorder_indices, :]
+    
+    # Update body_names to match target order
+    log['body_names'] = [current_body_names[i] for i in reorder_indices]
+    
+    return log
+
+
 def run_simulator(joint_names: list[str]):
     """Runs the simulation loop."""
     # Load motion
+    max_play_frames = 310   # 只播放前 200 帧
+    play_frame_cnt = 0
     device = torch.device("cpu")
     has_dynamic_object = args_cli.has_dynamic_object
+    if isinstance(has_dynamic_object, str):
+        has_dynamic_object = has_dynamic_object.lower() in ["true", "1", "yes"]
     use_omniretarget_data = args_cli.use_omniretarget_data
+    if isinstance(use_omniretarget_data, str):
+        use_omniretarget_data = use_omniretarget_data.lower() in ["true", "1", "yes"]
+    
+    headless = args_cli.headless
+    if isinstance(headless, str):
+        headless = headless.lower() in ["true", "1", "yes"]
+    # Force headless if no display is detected
+    if "DISPLAY" not in os.environ:
+        headless = True
     line_range: tuple[int, int] | None = args_cli.line_range
     motion = MotionLoader(
         motion_file=args_cli.input_file,
@@ -357,6 +453,7 @@ def run_simulator(joint_names: list[str]):
         line_range=line_range,
         has_dynamic_object=has_dynamic_object,
         use_omniretarget_data=use_omniretarget_data,
+        override_input_fps=True, # Always respect the command line input_fps if provided
     )
 
     object_name = args_cli.object_name
@@ -390,9 +487,20 @@ def run_simulator(joint_names: list[str]):
     robot_data = mujoco.MjData(robot)
     print("Loading robot model from: ", robot_xml_path)
 
+    # Automatically detect if the model contains an object (nq > 36 for G1)
+    if robot.nq > 36 and not has_dynamic_object:
+        print(f"[INFO] Detected robot.nq={robot.nq} > 36, enabling has_dynamic_object logic.")
+        has_dynamic_object = True
+        # Re-initialize motion loader with has_dynamic_object=True if it was False
+        motion.has_dynamic_object = True
+        motion.override_input_fps = True
+        motion._load_motion()
+        motion._interpolate_motion()
+        motion._compute_velocities()
+
     # Prepare dof index for mujoco to correctly assign the values from input data
     dof_name_list = []
-    for i in range(robot.njnt):  # 'nv' is the number of DoFs
+    for i in range(robot.njnt):
         if robot.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
             continue
         dof_name = mujoco.mj_id2name(robot, mujoco.mjtObj.mjOBJ_JOINT, i)
@@ -403,15 +511,22 @@ def run_simulator(joint_names: list[str]):
     print(dof_index_list)
 
     # Prepare mujoco viewer
-    viewer = mjv.launch_passive(robot, robot_data, show_left_ui=False, show_right_ui=False)
-    viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_PERTFORCE] = 0
-    viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = 0
-    viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_TRANSPARENT] = 0
-    viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_COM] = 0
+    viewer = None
+    if not headless:
+        try:
+            viewer = mjv.launch_passive(robot, robot_data, show_left_ui=False, show_right_ui=False)
+            viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_PERTFORCE] = 0
+            viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = 0
+            viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_TRANSPARENT] = 0
+            viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_COM] = 0
 
-    viewer.cam.distance = 2.0
-    viewer.cam.elevation = -20.0
-    viewer.cam.azimuth = 45.0
+            viewer.cam.distance = 2.0
+            viewer.cam.elevation = -20.0
+            viewer.cam.azimuth = 45.0
+        except Exception as e:
+            print(f"[INFO] Viewer could not be initialized (likely headless): {e}")
+    else:
+        print("[INFO] Running in headless mode, skipping viewer initialization.")
 
     log: dict[str, Any]
     if has_dynamic_object:
@@ -439,7 +554,6 @@ def run_simulator(joint_names: list[str]):
             "body_ang_vel_w": [],
         }
     file_saved = False
-    # --------------------------------------------------------------------------
 
     # Simulation loop
     while True:
@@ -488,7 +602,7 @@ def run_simulator(joint_names: list[str]):
                     motion_object_rot,
                 ],
                 dim=1,
-            )
+            ).cpu().numpy().flatten()
             robot_data.qvel[:] = torch.cat(
                 [
                     motion_base_lin_vel,
@@ -498,20 +612,25 @@ def run_simulator(joint_names: list[str]):
                     motion_object_ang_vel,
                 ],
                 dim=1,
-            )
+            ).cpu().numpy().flatten()
 
         else:
             # set root state
-            robot_data.qpos[:] = torch.cat([motion_base_pos, motion_base_rot, motion_dof_pos[:, dof_index_list]], dim=1)
+            robot_data.qpos[:] = torch.cat(
+                [motion_base_pos, motion_base_rot, motion_dof_pos[:, dof_index_list]], dim=1
+            ).cpu().numpy().flatten()
             robot_data.qvel[:] = torch.cat(
                 [motion_base_lin_vel, motion_base_ang_vel, motion_dof_vel[:, dof_index_list]], dim=1
-            )
+            ).cpu().numpy().flatten()
 
         mujoco.mj_forward(robot, robot_data)
-        viewer.sync()
-
+        # viewer.sync()
+        if viewer is not None and play_frame_cnt < max_play_frames:
+            viewer.sync()
+            play_frame_cnt += 1
         end_time = time.perf_counter()
-        time.sleep(max(0, motion.output_dt - (end_time - start_time)))
+        if not headless:
+            time.sleep(max(0, motion.output_dt - (end_time - start_time)))
 
         if not file_saved:
             lin_vel_w, ang_vel_w = world_body_velocities(robot, robot_data)
@@ -533,6 +652,15 @@ def run_simulator(joint_names: list[str]):
             log["body_lin_vel_w"].append(lin_vel_w[:].copy())
             log["body_ang_vel_w"].append(ang_vel_w[:].copy())
 
+            # --- 新增：记录头部 geom 的精确位置 ---
+            head_geom_id = mujoco.mj_name2id(robot, mujoco.mjtObj.mjOBJ_GEOM, "head_link")
+            if head_geom_id != -1:
+                log.setdefault("head_pos_w", []).append(robot_data.geom_xpos[head_geom_id].copy())
+                h_quat = np.zeros(4)
+                mujoco.mju_mat2Quat(h_quat, robot_data.geom_xmat[head_geom_id])
+                log.setdefault("head_quat_w", []).append(h_quat.copy())
+            # ------------------------------------
+
         if reset_flag and not file_saved:
             file_saved = True
             for k in (
@@ -542,8 +670,11 @@ def run_simulator(joint_names: list[str]):
                 "body_quat_w",
                 "body_lin_vel_w",
                 "body_ang_vel_w",
+                "head_pos_w",
+                "head_quat_w"
             ):
-                log[k] = np.stack(log[k], axis=0)[:]
+                if k in log:
+                    log[k] = np.stack(log[k], axis=0)[:]
 
             if has_dynamic_object:
                 for k in (
@@ -555,7 +686,6 @@ def run_simulator(joint_names: list[str]):
                     log[k] = np.stack(log[k], axis=0)[:]
 
             # Add joint names and body names to the log
-            # Names for qpos/qvel follow joint order
             joint_names = [mujoco.mj_id2name(robot, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(robot.njnt)]
             body_names = [mujoco.mj_id2name(robot, mujoco.mjtObj.mjOBJ_BODY, i) for i in range(robot.nbody)]
 
@@ -566,15 +696,32 @@ def run_simulator(joint_names: list[str]):
 
             log["body_names"] = body_names
 
+            # Reorder body data according to target order
+            target_body_order = [
+                'pelvis', 'left_hip_pitch_link', 'right_hip_pitch_link', 'waist_yaw_link',
+    'left_hip_roll_link', 'right_hip_roll_link', 'waist_roll_link',
+    'left_hip_yaw_link', 'right_hip_yaw_link', 'torso_link',
+    'left_knee_link', 'right_knee_link', 'left_shoulder_pitch_link',
+    'right_shoulder_pitch_link', 'left_ankle_pitch_link', 'right_ankle_pitch_link',
+    'left_shoulder_roll_link', 'right_shoulder_roll_link', 'left_ankle_roll_link',
+    'right_ankle_roll_link', 'left_shoulder_yaw_link', 'right_shoulder_yaw_link',
+    'left_elbow_link', 'right_elbow_link', 'left_wrist_roll_link',
+    'right_wrist_roll_link', 'left_wrist_pitch_link', 'right_wrist_pitch_link',
+    'left_wrist_yaw_link', 'right_wrist_yaw_link',
+            ]
+            
+            log = reorder_body_data(log, robot, target_body_order)
+
             if args_cli.output_name is None:
                 raise ValueError("output_name cannot be None")
             output_res_folder = Path(args_cli.output_name).parent
             os.makedirs(output_res_folder, exist_ok=True)
             np.savez(args_cli.output_name, **log)
 
-        if args_cli.once and file_saved:
-            print("[INFO]: Motion replay completed, exiting...")
-            viewer.close()
+        if (args_cli.once or headless) and file_saved:
+            print("[INFO]: Motion conversion completed, exiting...")
+            if viewer is not None:
+                viewer.close()
             break
 
 
@@ -619,3 +766,4 @@ def main():
 if __name__ == "__main__":
     # run the main function
     main()
+

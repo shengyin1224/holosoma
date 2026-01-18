@@ -1,0 +1,23 @@
+<mujoco model="g1_side_table">
+    <!-- 1. 包含基础机器人模型 -->
+    <include file="g1_29dof.xml"/>
+
+    <!-- 2. 任务相关的资源定义 -->
+    <asset>
+        <mesh name="side_table_mesh" file="/home/ubuntu/DATA1/shengyin/humanoid/holosoma/src/holosoma_retargeting/models/side_table/side_table.obj" scale="1.0 1.0 1.0"/>
+    </asset>
+
+    <!-- 3. 任务相关的物体定义 -->
+    <worldbody>
+        <body name="side_table_link" pos="0 0 0">
+            <freejoint/>
+            <inertial pos="0 0 0" mass="0.1" diaginertia="0.002 0.002 0.002"/>
+            <geom name="side_table" type="mesh" mesh="side_table_mesh" 
+                  rgba="1.0 0.4235 0.0392 1.0" contype="1" conaffinity="1" 
+                  friction="0.9 0.5 0.5" solref="0.02 1" solimp="0.9 0.95 0.001"/>
+        </body>
+        
+        <!-- 可选：添加场景光照（基础模型中通常已有，此处作为补充） -->
+        <light name="task_light" pos="0 0 5" dir="0 0 -1" directional="true" diffuse="0.5 0.5 0.5"/>
+    </worldbody>
+</mujoco>
