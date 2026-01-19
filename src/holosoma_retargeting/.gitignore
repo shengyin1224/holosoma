@@ -2,8 +2,6 @@
 __pycache__
 *.zip
 .vscode
-*.pt
-*.pkl
 *.egg-info
 data/
 .DS_Store
@@ -11,11 +9,8 @@ rt_all_data/
 rt_results/
 results_single/
 experiments/
-*scaled*.urdf
-*scaled*.xml
 nightly_data/
 nightly_results/
-demo_results/
 demo_results_parallel/
 *.pyc
 demo_data/lafan/
